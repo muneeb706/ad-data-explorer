@@ -1,2 +1,2 @@
 # ad-data-explorer
-A custom query engine in Python for CSV datasets, built from scratch without libraries like csv or pandas to analyze Alzheimer's Disease (AD) research data.
+A data analysis tool built entirely from scratch in Python. It features a custom CSV parser and a SQL-like query engine that supports filtering, projection, aggregation, and joins without relying on external libraries like Pandas. The project serves as a web-based application designed to explore and analyze complex, real-world data from the [Seattle Alzheimer's Disease (SEA-AD) research cohort](https://portal.brain-map.org/explore/seattle-alzheimers-disease/seattle-alzheimers-disease-brain-cell-atlas-download?edit&language=en).
