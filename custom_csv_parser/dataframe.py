@@ -106,6 +106,16 @@ class DataFrame:
     Use lambda functions:
     df.filter(lambda row: row['Age'] > 30 and row['City'] == 'NYC')
     df.filter(lambda row: row['Age'] < 25 or row['Age'] > 65)
+
+    Grouping and Aggregation:
+    grouped = df.groupby('Sex')
+            agg_df = grouped.agg({
+                'Age at Death': 'max',
+                'Donor ID': 'count'
+            })
+    Note:
+    Currently, this implementation only supports grouping by a single column.
+    Multi-column grouping (e.g., groupby(['Sex', 'Cognitive Status'])) is not supported.
     """
 
     def __init__(self, data, columns):
@@ -222,3 +232,115 @@ class DataFrame:
         }
 
         return DataFrame(new_data, self._columns)
+
+    def groupby(self, by):
+        """
+        Groups the DataFrame by a specified column.
+
+        Args:
+            by (str): The name of the column to group by.
+
+        Returns:
+            DataFrameGroupBy: An object representing the grouped data,
+                              ready for an aggregation step.
+        """
+        if by not in self._columns:
+            raise KeyError(f"Column '{by}' not found in DataFrame.")
+
+        grouped_data = {}
+        grouping_col_data = self._data[by]
+
+        # Find the unique values in the grouping column to form the groups
+        unique_groups = sorted(list(set(grouping_col_data)))
+
+        for group in unique_groups:
+            # For each unique group, create a boolean mask to filter the original DataFrame
+            mask = [val == group for val in grouping_col_data]
+            # self[mask] will use the filtering logic in __getitem__
+            # which returns a new DataFrame with only the rows for that group
+            grouped_data[group] = self[mask]
+            # Example of grouped_data if unique_groups = ['Female', 'Male']
+            # ├── 'Female' → DataFrame with 2 rows
+            # │   ├── Sex: ['Female', 'Female']
+            # │   ├── Age: [30, 28]
+            # │   └── City: ['LA', 'LA']
+            # │
+            # └── 'Male' → DataFrame with 3 rows
+            #     ├── Sex: ['Male', 'Male', 'Male']
+            #     ├── Age: [25, 35, 40]
+            #     └── City: ['NYC', 'NYC', 'Boston']
+
+        return DataFrameGroupBy(grouped_data, by)
+
+
+class DataFrameGroupBy:
+    """
+    An intermediate object representing a grouped DataFrame.
+    This object is created by DataFrame.groupby() and is used to perform aggregations.
+    """
+
+    def __init__(self, grouped_data, by_column):
+        self._grouped_data = grouped_data
+        self._by_column = by_column
+
+    def __repr__(self):
+        return f"DataFrameGroupBy(by='{self._by_column}', ngroups={len(self._grouped_data)})"
+
+    def agg(self, agg_dict):
+        """
+        Performs aggregation on the grouped data.
+
+        Args:
+            agg_dict (dict): A dictionary mapping column names to aggregation functions.
+                             Supported functions: 'max', 'min', 'mean', 'count'.
+                             Example: {'Age at Death': 'max', 'Donor ID': 'count'}
+
+        Returns:
+            DataFrame: A new DataFrame with the aggregated results. The grouping
+                       column will become the first column.
+                       Example output: DataFrame(shape=(2, 4), columns=['Sex', 'Age at Death_max', 'Donor ID_count', 'Brain Weight_mean'])
+                       Internal data structure:
+                        {
+                            'Sex': ['Female', 'Male'],
+                            'Age at Death_max': [92.0, 95.0],
+                            'Donor ID_count': [3, 3],
+                            'Brain Weight_mean': [1160.0, 1200.0]
+                        }
+
+        """
+        agg_results = {self._by_column: list(self._grouped_data.keys())}
+        result_columns = [self._by_column]
+
+        for col, func_name in agg_dict.items():
+            new_col_name = f"{col}_{func_name}"
+            result_columns.append(new_col_name)
+            agg_results[new_col_name] = []
+
+            for group_name, group_df in self._grouped_data.items():
+                column_data = group_df[col]  # This is a Series
+
+                # Convert to numeric if possible for numeric operations
+                numeric_data = []
+                if func_name in ["max", "min", "mean"]:
+                    for val in column_data:
+                        try:
+                            numeric_data.append(float(val))
+                        except (ValueError, TypeError):
+                            continue  # Skip non-numeric values
+
+                if func_name == "max":
+                    result = max(numeric_data) if numeric_data else None
+                elif func_name == "min":
+                    result = min(numeric_data) if numeric_data else None
+                elif func_name == "mean":
+                    result = (
+                        sum(numeric_data) / len(numeric_data) if numeric_data else None
+                    )
+                elif func_name == "count":
+                    result = len(column_data)
+                else:
+                    raise ValueError(f"Unsupported aggregation function '{func_name}'")
+
+                agg_results[new_col_name].append(result)
+
+        return DataFrame(agg_results, result_columns)
