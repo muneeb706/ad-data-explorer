@@ -22,43 +22,33 @@ COGNITIVE_FILE = os.path.join(
 # --- 3. Master Data Loading Function ---
 # It uses @st.cache_data to run only once
 @st.cache_data
-def load_data():
+def load_individual_datasets():
     """
-    Parses all CSVs and joins them into a single master DataFrame.
-    This demonstrates all required functions from the project guideline:
-    1. CSVParser (from custom_csv_parser.csv_parser)
-    2. DataFrame.join (from custom_csv_parser.dataframe)
+    Parses all four CSVs using the custom CSVParser.
+    This demonstrates the PARSE function of the library.
     """
     try:
         start_time = time.time()
-        # 1. PARSE
+
+        # 1. PARSE (Using your custom parser from csv_parser.py)
         donor_df = CSVParser(filepath=DONOR_METADATA_FILE).parse()
         mri_df = CSVParser(filepath=MRI_FILE).parse()
         neuropath_df = CSVParser(filepath=NEUROPATH_FILE).parse()
         cognitive_df = CSVParser(filepath=COGNITIVE_FILE).parse()
 
-        # 2. JOIN
-        # Join all four datasets into one master table
-        master_df = donor_df.join(mri_df, left_on="Donor ID", right_on="Donor ID")
-        master_df = master_df.join(
-            neuropath_df, left_on="Donor ID", right_on="Donor ID"
-        )
-        master_df = master_df.join(
-            cognitive_df, left_on="Donor ID", right_on="Donor ID"
-        )
-
         end_time = time.time()
         load_time = end_time - start_time
 
-        return master_df, load_time
+        return donor_df, mri_df, neuropath_df, cognitive_df, load_time
+
     except FileNotFoundError as e:
         st.error(
             f"Error loading data file: {e}. Make sure the 'data' directory is correct."
         )
-        return None, 0
+        return None, None, None, None, 0
     except Exception as e:
-        st.error(f"An error occurred during data loading and joining: {e}")
-        return None, 0
+        st.error(f"An error occurred during data loading: {e}")
+        return None, None, None, None, 0
 
 
 # --- 4. Main App Logic ---
@@ -78,24 +68,86 @@ Use the sidebar to navigate to the different tools.
 """
 )
 
-# --- 5. Load Data and Store in Session ---
-# Check if data is already loaded to avoid re-running
+# --- 5. Load, Explain, and Join Data ---
 if "master_df" not in st.session_state:
-    with st.spinner("Loading and joining datasets... This may take a moment."):
-        master_df, load_time = load_data()
+    with st.spinner("Loading individual datasets using custom parser..."):
+        donor_df, mri_df, neuropath_df, cognitive_df, load_time = (
+            load_individual_datasets()
+        )
 
-        if master_df:
-            # Store the loaded data in the session state
-            st.session_state["master_df"] = master_df
-            st.success(
-                f"Successfully loaded and joined datasets in {load_time:.2f} seconds."
+    if donor_df:
+        st.success(f"Successfully parsed all datasets in {load_time:.2f} seconds.")
+
+        # --- Explain and Show Individual Datasets ---
+        st.header("Individual Datasets")
+        st.markdown("First 3 rows and the shape of each dataset file:")
+
+        st.subheader("1. Donor Metadata")
+        st.markdown(
+            "It contains the primary demographic and clinical information for each donor, like their `Donor ID`, `Sex`, `Age at Death`, and `Cognitive Status`."
+        )
+        st.dataframe(donor_df.head(3).to_dict())
+        st.info(f"**Shape:** {donor_df._shape[0]} rows, {donor_df._shape[1]} columns")
+
+        st.subheader("2. Cognitive Scores")
+        st.markdown(
+            "Contains harmonized cognitive test scores for the donors identified by `Donor ID`."
+        )
+        st.dataframe(cognitive_df.head(3).to_dict())
+        st.info(
+            f"**Shape:** {cognitive_df._shape[0]} rows, {cognitive_df._shape[1]} columns"
+        )
+
+        st.subheader("3. MRI Volumetrics")
+        st.markdown(
+            "Contains brain scan (MRI) measurements, such as the volume of the hippocampus, for donors identified by `Donor ID`."
+        )
+        st.dataframe(mri_df.head(3).to_dict())
+        st.info(f"**Shape:** {mri_df._shape[0]} rows, {mri_df._shape[1]} columns")
+
+        st.subheader("4. Neuropathology")
+        st.markdown(
+            "Contains detailed post-mortem data, like plaque measurements, for donors identified by `Donor ID`."
+        )
+        st.dataframe(neuropath_df.head(3).to_dict())
+        st.info(
+            f"**Shape:** {neuropath_df._shape[0]} rows, {neuropath_df._shape[1]} columns"
+        )
+
+        # --- Explain and Perform Join ---
+        st.header("Joining All Datasets")
+        st.markdown(
+            """
+        Using `join()` function to combine all datasets into one 'master' dataset.
+       Joining them all using a single common column: **`Donor ID`**.
+        Here are the first 5 rows of the final joined data:
+        """
+        )
+
+        with st.spinner("Joining datasets using `join()` method..."):
+            master_df = donor_df.join(mri_df, left_on="Donor ID", right_on="Donor ID")
+            master_df = master_df.join(
+                neuropath_df, left_on="Donor ID", right_on="Donor ID"
             )
-            st.info(f"Master DataFrame created with shape: {master_df._shape}")
-            st.dataframe(master_df.head(5).to_dict())
-        else:
-            st.error("Failed to load data. The application cannot proceed.")
+            master_df = master_df.join(
+                cognitive_df, left_on="Donor ID", right_on="Donor ID"
+            )
+
+        st.success("Successfully joined all datasets!")
+        st.dataframe(master_df.head(5).to_dict())
+        st.info(
+            f"**Master DataFrame Shape:** {master_df._shape[0]} rows, {master_df._shape[1]} columns"
+        )
+
+        # Store the final result in the session state
+        st.session_state["master_df"] = master_df
+
+    else:
+        st.error("Failed to load data. The application cannot proceed.")
 else:
     st.success("Master dataset is already loaded.")
-    st.info(f"Master DataFrame shape: {st.session_state['master_df']._shape}")
+    st.info(
+        f"Master DataFrame shape: {st.session_state['master_df']._shape[0]} rows, {st.session_state['master_df']._shape[1]} columns"
+    )
 
 st.sidebar.success("Select an analysis page to begin.")
