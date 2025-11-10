@@ -59,12 +59,11 @@ st.subheader(
 
 st.markdown(
     """
-**This application demonstrates all required functions:**
-* **Parsing:** All data is loaded from the CSV files using the `CSVParser`.
-* **Join:** The four datasets are merged into one master table using the `join()` method.
-* **Filtering, Projection, Group By, Aggregation:** These functions are used in the 'Data Explorer' and 'Comparative Analysis' pages.
-
-Use the sidebar to navigate to the different tools.
+**This application demonstrates use of following operations:**
+* **Parsing:** Load data from the CSV files.
+* **Filtering & Projection:** Select rows and columns.
+* **Grouping & Aggregation:** Summarize data by groups.
+* **Join:** Join / Merge data in CSV files.
 """
 )
 
@@ -79,7 +78,7 @@ if "master_df" not in st.session_state:
         st.success(f"Successfully parsed all datasets in {load_time:.2f} seconds.")
 
         # --- Explain and Show Individual Datasets ---
-        st.header("Individual Datasets")
+        st.header("Data Exploration: Individual Datasets")
         st.markdown("First 3 rows and the shape of each dataset file:")
 
         st.subheader("1. Donor Metadata")
@@ -115,7 +114,7 @@ if "master_df" not in st.session_state:
         )
 
         # --- Explain and Perform Join ---
-        st.header("Joining All Datasets")
+        st.header("Data Exploration: Joining All Datasets")
         st.markdown(
             """
         Using `join()` function to combine all datasets into one 'master' dataset.
@@ -149,5 +148,3 @@ else:
     st.info(
         f"Master DataFrame shape: {st.session_state['master_df']._shape[0]} rows, {st.session_state['master_df']._shape[1]} columns"
     )
-
-st.sidebar.success("Select an analysis page to begin.")
