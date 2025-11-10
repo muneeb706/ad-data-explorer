@@ -68,11 +68,8 @@ st.markdown(
 )
 
 # --- 5. Load, Explain, and Join Data ---
-if "master_df" not in st.session_state:
-    with st.spinner("Loading individual datasets using custom parser..."):
-        donor_df, mri_df, neuropath_df, cognitive_df, load_time = (
-            load_individual_datasets()
-        )
+with st.spinner("Loading individual datasets using custom parser..."):
+    donor_df, mri_df, neuropath_df, cognitive_df, load_time = load_individual_datasets()
 
     if donor_df:
         st.success(f"Successfully parsed all datasets in {load_time:.2f} seconds.")
@@ -139,12 +136,7 @@ if "master_df" not in st.session_state:
         )
 
         # Store the final result in the session state
-        st.session_state["master_df"] = master_df
+        # st.session_state["master_df"] = master_df
 
     else:
         st.error("Failed to load data. The application cannot proceed.")
-else:
-    st.success("Master dataset is already loaded.")
-    st.info(
-        f"Master DataFrame shape: {st.session_state['master_df']._shape[0]} rows, {st.session_state['master_df']._shape[1]} columns"
-    )
