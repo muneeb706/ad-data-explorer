@@ -145,17 +145,30 @@ elif operation == "Filtering":
     # Initialize filters list in session state if not present
     if "filters" not in st.session_state:
         st.session_state.filters = []
+    if "filter_logics" not in st.session_state:
+        st.session_state.filter_logics = []
 
     # Display existing filters
     if st.session_state.filters:
         st.markdown("**Applied Filters:**")
         for idx, (col, op, val) in enumerate(st.session_state.filters):
-            col1, col2 = st.columns([4, 1])
+            col1, col2, col3 = st.columns([3, 1, 1])
             with col1:
-                st.text(f"  • {col} {op} '{val}'")
+                if idx == 0:
+                    st.text(f"  • {col} {op} '{val}'")
+                else:
+                    logic_op = (
+                        st.session_state.filter_logics[idx - 1]
+                        if idx - 1 < len(st.session_state.filter_logics)
+                        else "AND"
+                    )
+                    st.text(f"  {logic_op} {col} {op} '{val}'")
             with col2:
                 if st.button("❌", key=f"remove_filter_{idx}"):
                     st.session_state.filters.pop(idx)
+                    # Remove corresponding logic operator if needed
+                    if idx < len(st.session_state.filter_logics):
+                        st.session_state.filter_logics.pop(idx)
                     st.rerun()
         st.divider()
 
@@ -180,11 +193,17 @@ elif operation == "Filtering":
             st.warning("Please enter a value.")
         else:
             st.session_state.filters.append((new_column, new_operator, new_value))
+            # If there are already filters, add the selected logic operator
+            if len(st.session_state.filters) > 1:
+                logic = st.session_state.get("pending_logic", "AND")
+                st.session_state.filter_logics.append(logic)
             st.rerun()
 
     # Show logic selector only if there are filters
     if st.session_state.filters:
-        logic = st.selectbox("Combine filters with:", ["AND", "OR"])
+        pending_logic = st.selectbox(
+            "Combine filters with:", ["AND", "OR"], key="pending_logic"
+        )
 
         if st.button("Run Filters"):
             try:
@@ -212,15 +231,27 @@ elif operation == "Filtering":
                                     break
                         masks.append(mask)
 
-                    # Combine masks using AND/OR logic
-                    if logic == "AND":
-                        combined_mask = [
-                            all(m[i] for m in masks) for i in range(df._shape[0])
-                        ]
-                    else:  # OR
-                        combined_mask = [
-                            any(m[i] for m in masks) for i in range(df._shape[0])
-                        ]
+                    # Combine masks using individual AND/OR logic for each filter
+                    if len(masks) == 1:
+                        combined_mask = masks[0]
+                    else:
+                        combined_mask = masks[0]
+                        for idx in range(1, len(masks)):
+                            logic_op = (
+                                st.session_state.filter_logics[idx - 1]
+                                if idx - 1 < len(st.session_state.filter_logics)
+                                else "AND"
+                            )
+                            if logic_op == "AND":
+                                combined_mask = [
+                                    combined_mask[i] and masks[idx][i]
+                                    for i in range(df._shape[0])
+                                ]
+                            else:  # OR
+                                combined_mask = [
+                                    combined_mask[i] or masks[idx][i]
+                                    for i in range(df._shape[0])
+                                ]
 
                     result_df = df[combined_mask]
                     end_time = time.time()
