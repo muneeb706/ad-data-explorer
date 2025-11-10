@@ -103,41 +103,52 @@ st.dataframe(df.to_dict())
 # --- 3. Select Operation ---
 st.header("Step 2: Choose and Configure an Operation")
 
-operation = st.selectbox("Select operation:", ["Filtering", "Projection"])
+# Initialize operations chain in session state
+if "operations_chain" not in st.session_state:
+    st.session_state.operations_chain = []
+
+# Display applied operations chain
+if st.session_state.operations_chain:
+    st.markdown("**Applied Operations Chain:**")
+    for idx, op_info in enumerate(st.session_state.operations_chain):
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            if op_info["type"] == "filter":
+                st.text(f"  {idx + 1}. Filter: {op_info['description']}")
+            else:
+                st.text(f"  {idx + 1}. Projection: {', '.join(op_info['columns'])}")
+        with col2:
+            if st.button("🗑️", key=f"remove_op_{idx}"):
+                st.session_state.operations_chain.pop(idx)
+                st.rerun()
+    st.divider()
+
+operation = st.selectbox("Select operation to add:", ["Filtering", "Projection"])
 
 if operation == "Projection":
     st.subheader("Configure Projection")
 
-    all_columns = df._columns
+    # Get current working DataFrame (either original or result from operations)
+    if st.session_state.operations_chain:
+        working_df = st.session_state.get("operations_result_df", df)
+    else:
+        working_df = df
+
+    all_columns = working_df._columns
     selected_columns = st.multiselect(
         "Select columns to project:",
         options=all_columns,
         default=list(all_columns[:3]),  # Default to first 3 columns
     )
 
-    if st.button("Run Projection"):
+    if st.button("Add Projection to Chain"):
         if not selected_columns:
             st.warning("Please select at least one column.")
         else:
-            try:
-                # --- PROJECTION LOGIC ---
-                with st.spinner("Applying projection..."):
-                    start_time = time.time()
-                    result_df = df[selected_columns]
-                    end_time = time.time()
-
-                st.session_state["last_result_df"] = result_df  # Save to memory
-
-                st.success(
-                    f"Projection complete in {end_time - start_time:.4f} seconds."
-                )
-                st.info(
-                    f"Resulting DataFrame shape: {result_df._shape[0]} rows × {result_df._shape[1]} columns."
-                )
-                st.dataframe(result_df.to_dict())
-
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
+            st.session_state.operations_chain.append(
+                {"type": "projection", "columns": selected_columns}
+            )
+            st.rerun()
 
 elif operation == "Filtering":
     st.subheader("Configure Filter(s)")
@@ -199,78 +210,115 @@ elif operation == "Filtering":
                 st.session_state.filter_logics.append(logic)
             st.rerun()
 
-    # Show logic selector only if there are filters
+    # Show Run Filters button only if there are filters
     if st.session_state.filters:
-        pending_logic = st.selectbox(
-            "Combine filters with:", ["AND", "OR"], key="pending_logic"
-        )
-
-        if st.button("Run Filters"):
+        if st.button("Add Filters to Chain", use_container_width=True):
             try:
-                # --- FILTERING LOGIC (MULTIPLE FILTERS) ---
-                with st.spinner("Applying filters..."):
-                    start_time = time.time()
-
-                    # Get all mask results for each filter
-                    masks = []
-                    for col, op, val in st.session_state.filters:
-                        filtered_df = apply_comparison(df, col, op, val)
-                        # Create a mask for this filter (True if row is in filtered_df)
-                        mask = [False] * df._shape[0]
-                        # Mark rows that are in the filtered result
-                        for i in range(df._shape[0]):
-                            row_data = {c: df._data[c][i] for c in df._columns}
-                            # Check if this row is in filtered_df
-                            for j in range(filtered_df._shape[0]):
-                                filtered_row = {
-                                    c: filtered_df._data[c][j]
-                                    for c in filtered_df._columns
-                                }
-                                if row_data == filtered_row:
-                                    mask[i] = True
-                                    break
-                        masks.append(mask)
-
-                    # Combine masks using individual AND/OR logic for each filter
-                    if len(masks) == 1:
-                        combined_mask = masks[0]
+                # Build filter description
+                filter_desc = []
+                for idx, (col, op, val) in enumerate(st.session_state.filters):
+                    if idx == 0:
+                        filter_desc.append(f"{col} {op} '{val}'")
                     else:
-                        combined_mask = masks[0]
-                        for idx in range(1, len(masks)):
-                            logic_op = (
-                                st.session_state.filter_logics[idx - 1]
-                                if idx - 1 < len(st.session_state.filter_logics)
-                                else "AND"
-                            )
-                            if logic_op == "AND":
-                                combined_mask = [
-                                    combined_mask[i] and masks[idx][i]
-                                    for i in range(df._shape[0])
-                                ]
-                            else:  # OR
-                                combined_mask = [
-                                    combined_mask[i] or masks[idx][i]
-                                    for i in range(df._shape[0])
-                                ]
+                        logic_op = (
+                            st.session_state.filter_logics[idx - 1]
+                            if idx - 1 < len(st.session_state.filter_logics)
+                            else "AND"
+                        )
+                        filter_desc.append(f"{logic_op} {col} {op} '{val}'")
 
-                    result_df = df[combined_mask]
-                    end_time = time.time()
-
-                st.session_state["last_result_df"] = result_df  # Save to memory
-
-                st.success(f"Filters complete in {end_time - start_time:.4f} seconds.")
-                st.info(
-                    f"Found **{result_df._shape[0]}** matching rows. Shape: {result_df._shape[0]} rows × {result_df._shape[1]} columns."
+                # Add filters to chain
+                st.session_state.operations_chain.append(
+                    {
+                        "type": "filter",
+                        "filters": st.session_state.filters.copy(),
+                        "filter_logics": st.session_state.filter_logics.copy(),
+                        "description": " ".join(filter_desc),
+                    }
                 )
-                st.dataframe(result_df.to_dict())
 
+                # Clear current filters for next operation
+                st.session_state.filters = []
+                st.session_state.filter_logics = []
+
+                st.rerun()
             except Exception as e:
-                st.error(
-                    f"An error occurred. This is often due to comparing incompatible types (e.g., '>' on a string). Error: {e}"
-                )
+                st.error(f"Error adding filters to chain: {e}")
 
-# --- 4. Display Last Result ---
+# --- 4. Execute Operations Chain ---
+if st.session_state.operations_chain:
+    if st.button("Execute Chain", use_container_width=True, type="primary"):
+        try:
+            with st.spinner("Executing operations chain..."):
+                start_time = time.time()
+                current_df = df
+
+                for op in st.session_state.operations_chain:
+                    if op["type"] == "filter":
+                        # Apply filtering
+                        masks = []
+                        for col, op_type, val in op["filters"]:
+                            filtered_df = apply_comparison(
+                                current_df, col, op_type, val
+                            )
+                            # Create a mask for this filter
+                            mask = [False] * current_df._shape[0]
+                            for i in range(current_df._shape[0]):
+                                row_data = {
+                                    c: current_df._data[c][i]
+                                    for c in current_df._columns
+                                }
+                                for j in range(filtered_df._shape[0]):
+                                    filtered_row = {
+                                        c: filtered_df._data[c][j]
+                                        for c in filtered_df._columns
+                                    }
+                                    if row_data == filtered_row:
+                                        mask[i] = True
+                                        break
+                            masks.append(mask)
+
+                        # Combine masks
+                        if len(masks) == 1:
+                            combined_mask = masks[0]
+                        else:
+                            combined_mask = masks[0]
+                            for idx in range(1, len(masks)):
+                                logic_op = (
+                                    op["filter_logics"][idx - 1]
+                                    if idx - 1 < len(op["filter_logics"])
+                                    else "AND"
+                                )
+                                if logic_op == "AND":
+                                    combined_mask = [
+                                        combined_mask[i] and masks[idx][i]
+                                        for i in range(current_df._shape[0])
+                                    ]
+                                else:
+                                    combined_mask = [
+                                        combined_mask[i] or masks[idx][i]
+                                        for i in range(current_df._shape[0])
+                                    ]
+                        current_df = current_df[combined_mask]
+
+                    elif op["type"] == "projection":
+                        # Apply projection
+                        current_df = current_df[op["columns"]]
+
+                end_time = time.time()
+
+            st.session_state["last_result_df"] = current_df
+            st.success(f"Chain executed in {end_time - start_time:.4f} seconds.")
+            st.info(
+                f"Final result shape: {current_df._shape[0]} rows × {current_df._shape[1]} columns."
+            )
+            st.dataframe(current_df.to_dict())
+
+        except Exception as e:
+            st.error(f"Error executing chain: {e}")
+
 st.header("Last Operation Result")
+
 if st.session_state.get("last_result_df") is not None:
     st.markdown(
         "This is the DataFrame currently saved in memory from your last operation."
