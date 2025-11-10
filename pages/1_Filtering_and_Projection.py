@@ -140,33 +140,94 @@ if operation == "Projection":
                 st.error(f"An error occurred: {e}")
 
 elif operation == "Filtering":
-    st.subheader("Configure Filter")
+    st.subheader("Configure Filter(s)")
 
+    # Initialize filters list in session state if not present
+    if "filters" not in st.session_state:
+        st.session_state.filters = []
+
+    # Display existing filters
+    if st.session_state.filters:
+        st.markdown("**Applied Filters:**")
+        for idx, (col, op, val) in enumerate(st.session_state.filters):
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.text(f"  • {col} {op} '{val}'")
+            with col2:
+                if st.button("❌", key=f"remove_filter_{idx}"):
+                    st.session_state.filters.pop(idx)
+                    st.rerun()
+        st.divider()
+
+    st.markdown("**Add New Filter:**")
     col1, col2, col3 = st.columns(3)
     with col1:
-        selected_column = st.selectbox("Column:", df._columns)
+        new_column = st.selectbox("Column:", df._columns, key="new_filter_col")
     with col2:
-        operator = st.selectbox("Operator:", ["==", "!=", ">", "<", ">=", "<="])
+        new_operator = st.selectbox(
+            "Operator:", ["==", "!=", ">", "<", ">=", "<="], key="new_filter_op"
+        )
     with col3:
-        value = st.text_input(
+        new_value = st.text_input(
             "Value:",
             help="Enter the value to compare against (e.g., 'Female', '80')",
+            key="new_filter_value",
         )
 
-    if st.button("Run Comparison Filter"):
-        if not value:
+    # Add Filter button on a new row for proper alignment
+    if st.button("Add Filter", use_container_width=True):
+        if not new_value:
             st.warning("Please enter a value.")
         else:
+            st.session_state.filters.append((new_column, new_operator, new_value))
+            st.rerun()
+
+    # Show logic selector only if there are filters
+    if st.session_state.filters:
+        logic = st.selectbox("Combine filters with:", ["AND", "OR"])
+
+        if st.button("Run Filters"):
             try:
-                # --- FILTERING LOGIC (COMPARISON) ---
-                with st.spinner("Applying filter..."):
+                # --- FILTERING LOGIC (MULTIPLE FILTERS) ---
+                with st.spinner("Applying filters..."):
                     start_time = time.time()
-                    result_df = apply_comparison(df, selected_column, operator, value)
+
+                    # Get all mask results for each filter
+                    masks = []
+                    for col, op, val in st.session_state.filters:
+                        filtered_df = apply_comparison(df, col, op, val)
+                        # Create a mask for this filter (True if row is in filtered_df)
+                        mask = [False] * df._shape[0]
+                        # Mark rows that are in the filtered result
+                        for i in range(df._shape[0]):
+                            row_data = {c: df._data[c][i] for c in df._columns}
+                            # Check if this row is in filtered_df
+                            for j in range(filtered_df._shape[0]):
+                                filtered_row = {
+                                    c: filtered_df._data[c][j]
+                                    for c in filtered_df._columns
+                                }
+                                if row_data == filtered_row:
+                                    mask[i] = True
+                                    break
+                        masks.append(mask)
+
+                    # Combine masks using AND/OR logic
+                    if logic == "AND":
+                        combined_mask = [
+                            all(m[i] for m in masks) for i in range(df._shape[0])
+                        ]
+                    else:  # OR
+                        combined_mask = [
+                            any(m[i] for m in masks) for i in range(df._shape[0])
+                        ]
+
+                    result_df = df[combined_mask]
                     end_time = time.time()
 
                 st.session_state["last_result_df"] = result_df  # Save to memory
 
-                st.success(f"Filter complete in {end_time - start_time:.4f} seconds.")
+                st.success(f"Filters complete in {end_time - start_time:.4f} seconds.")
                 st.info(
                     f"Found **{result_df._shape[0]}** matching rows. Shape: {result_df._shape[0]} rows × {result_df._shape[1]} columns."
                 )
