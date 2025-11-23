@@ -1,4 +1,5 @@
 import streamlit as st
+from custom_csv_parser.dataframe import DataFrame
 from custom_csv_parser.csv_parser import CSVParser
 import os
 
@@ -9,12 +10,16 @@ st.title("🔗 Join Datasets")
 st.markdown(
     """
 This page demonstrates the **Hash Join** algorithm implemented in the custom engine.
-You can combine two datasets horizontally based on a common key column (e.g., `Donor ID`).
+You can combine two datasets horizontally based on a common key column.
 """
 )
 
 # --- File Paths ---
 DATA_DIR = "data"
+TMP_DIR = os.path.join(DATA_DIR, "tmp")
+if not os.path.exists(TMP_DIR):
+    os.makedirs(TMP_DIR)
+
 AVAILABLE_FILES = {
     "Donor Metadata": os.path.join(DATA_DIR, "sea-ad_cohort_donor_metadata_072524.csv"),
     "MRI Volumetrics": os.path.join(DATA_DIR, "sea-ad_cohort_mri_volumetrics.csv"),
@@ -29,7 +34,35 @@ AVAILABLE_FILES = {
 
 @st.cache_data(show_spinner=False)
 def load_data(path):
-    return CSVParser(filepath=path).parse()
+    try:
+        return CSVParser(filepath=path).parse()
+    except Exception as e:
+        return None
+
+
+# --- Helper to select/upload file ---
+def render_file_selector(key_prefix, label):
+    st.subheader(label)
+    source = st.radio(
+        "Source:", ["Preset", "Upload"], key=f"{key_prefix}_source", horizontal=True
+    )
+
+    f_path = None
+    if source == "Preset":
+        name = st.selectbox(
+            f"Choose {label}:", list(AVAILABLE_FILES.keys()), key=f"{key_prefix}_preset"
+        )
+        f_path = AVAILABLE_FILES[name]
+    else:
+        uploaded = st.file_uploader(
+            f"Upload {label} CSV", type="csv", key=f"{key_prefix}_upload"
+        )
+        if uploaded:
+            f_path = os.path.join(TMP_DIR, uploaded.name)
+            with open(f_path, "wb") as f:
+                f.write(uploaded.getbuffer())
+
+    return f_path
 
 
 # --- 1. Select Datasets ---
@@ -37,99 +70,83 @@ st.header("Step 1: Select Datasets")
 
 col1, col2 = st.columns(2)
 
+left_df = None
+right_df = None
+
 with col1:
-    st.subheader("Left Dataset")
-    left_name = st.selectbox(
-        "Choose Left Dataset:", list(AVAILABLE_FILES.keys()), index=0
-    )
-    try:
-        left_df = load_data(AVAILABLE_FILES[left_name])
-        st.info(f"Loaded: {left_df._shape[0]} rows, {left_df._shape[1]} cols")
-        with st.expander("View Left Data"):
-            st.dataframe(left_df.head(3).to_dict())
-    except Exception as e:
-        st.error(f"Error loading left file: {e}")
-        st.stop()
+    left_path = render_file_selector("left", "Left Dataset")
+    if left_path:
+        left_df = load_data(left_path)
+        if left_df:
+            st.info(f"Loaded: {left_df._shape[0]} rows, {left_df._shape[1]} cols")
+            with st.expander("View Data"):
+                st.dataframe(left_df.head(3).to_dict())
+        else:
+            st.error("Error parsing file.")
 
 with col2:
-    st.subheader("Right Dataset")
-    # Default to second file to make it easy to join immediately
-    right_name = st.selectbox(
-        "Choose Right Dataset:", list(AVAILABLE_FILES.keys()), index=1
-    )
-    try:
-        right_df = load_data(AVAILABLE_FILES[right_name])
-        st.info(f"Loaded: {right_df._shape[0]} rows, {right_df._shape[1]} cols")
-        with st.expander("View Right Data"):
-            st.dataframe(right_df.head(3).to_dict())
-    except Exception as e:
-        st.error(f"Error loading right file: {e}")
-        st.stop()
+    right_path = render_file_selector("right", "Right Dataset")
+    if right_path:
+        right_df = load_data(right_path)
+        if right_df:
+            st.info(f"Loaded: {right_df._shape[0]} rows, {right_df._shape[1]} cols")
+            with st.expander("View Data"):
+                st.dataframe(right_df.head(3).to_dict())
+        else:
+            st.error("Error parsing file.")
 
 # --- 2. Configure Join Keys ---
-st.header("Step 2: Configure Join Keys")
+if left_df and right_df:
+    st.header("Step 2: Configure Join Keys")
 
-# Find common columns to suggest as default
-common_cols = list(set(left_df._columns) & set(right_df._columns))
-default_index = 0
-if "Donor ID" in common_cols:
-    default_index = common_cols.index("Donor ID")
-elif common_cols:
-    default_index = 0
+    # Find common columns to suggest as default
+    common_cols = list(set(left_df._columns) & set(right_df._columns))
+
+    c1, c2 = st.columns(2)
+    with c1:
+        # Default to "Donor ID" if present, otherwise first common col, otherwise first col
+        l_idx = 0
+        if "Donor ID" in left_df._columns:
+            l_idx = left_df._columns.index("Donor ID")
+
+        left_on = st.selectbox("Left Key Column:", left_df._columns, index=l_idx)
+
+    with c2:
+        r_idx = 0
+        if "Donor ID" in right_df._columns:
+            r_idx = right_df._columns.index("Donor ID")
+
+        right_on = st.selectbox("Right Key Column:", right_df._columns, index=r_idx)
+
+    # --- 3. Execute Join ---
+    st.header("Step 3: Result")
+
+    st.warning(
+        "⚠️ **Note:** This engine supports only **Inner Join**. "
+        "Non-matching rows will be excluded."
+    )
+
+    if st.button("Execute Inner Join", type="primary"):
+        try:
+            with st.spinner("Joining datasets..."):
+                joined_df = left_df.join(right_df, left_on=left_on, right_on=right_on)
+
+            st.success("Join successful!")
+
+            st.write(
+                f"**Left:** {left_df._shape[0]} rows | **Right:** {right_df._shape[0]} rows"
+            )
+            st.write(
+                f"**Result:** {joined_df._shape[0]} rows, {joined_df._shape[1]} columns"
+            )
+
+            st.dataframe(joined_df.head(10).to_dict())
+
+            with st.expander("Inspect Joined Columns"):
+                st.write(joined_df._columns)
+
+        except Exception as e:
+            st.error(f"An error occurred during join: {e}")
+
 else:
-    default_index = 0
-
-col1, col2 = st.columns(2)
-with col1:
-    left_on = st.selectbox(
-        "Left Key Column:",
-        left_df._columns,
-        index=(
-            left_df._columns.index("Donor ID") if "Donor ID" in left_df._columns else 0
-        ),
-    )
-with col2:
-    right_on = st.selectbox(
-        "Right Key Column:",
-        right_df._columns,
-        index=(
-            right_df._columns.index("Donor ID")
-            if "Donor ID" in right_df._columns
-            else 0
-        ),
-    )
-
-# --- 3. Execute Join ---
-st.header("Step 3: Result")
-
-# --- LIMITATION NOTE ---
-st.warning(
-    "⚠️ **Note on Join Type:** "
-    "This custom engine currently supports only **Inner Join**. "
-    "Rows that do not have matching keys in both datasets will be excluded from the result."
-)
-
-if st.button("Execute Inner Join", type="primary"):
-    try:
-        with st.spinner("Joining datasets..."):
-            # Call the custom join method
-            joined_df = left_df.join(right_df, left_on=left_on, right_on=right_on)
-
-        st.success("Join successful!")
-
-        # Display Stats
-        st.write(
-            f"**Left Rows:** {left_df._shape[0]} | **Right Rows:** {right_df._shape[0]}"
-        )
-        st.write(f"**Joined Rows:** {joined_df._shape[0]} (Inner Join)")
-        st.write(f"**Joined Columns:** {joined_df._shape[1]}")
-
-        # Display Data
-        st.dataframe(joined_df.head(10).to_dict())
-
-        # Column Inspector
-        with st.expander("Inspect Joined Columns"):
-            st.write(joined_df._columns)
-
-    except Exception as e:
-        st.error(f"An error occurred during join: {e}")
+    st.info("Please select both datasets to proceed.")
