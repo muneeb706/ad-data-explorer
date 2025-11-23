@@ -16,7 +16,6 @@ This page lets you interactively test the **Filtering** and **Projection** capab
 
 # --- File Paths ---
 DATA_DIR = "data"
-# Citing the data files from the repository
 AVAILABLE_FILES = {
     "Donor Metadata": os.path.join(DATA_DIR, "sea-ad_cohort_donor_metadata_072524.csv"),
     "MRI Volumetrics": os.path.join(DATA_DIR, "sea-ad_cohort_mri_volumetrics.csv"),
