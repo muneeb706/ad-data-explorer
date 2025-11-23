@@ -1,5 +1,4 @@
 import streamlit as st
-from custom_csv_parser.dataframe import DataFrame
 from custom_csv_parser.csv_parser import CSVParser
 import os
 

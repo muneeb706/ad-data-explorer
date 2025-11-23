@@ -1,6 +1,6 @@
 import streamlit as st
 from custom_csv_parser.dataframe import DataFrame
-from custom_csv_parser.csv_parser import CSVParser  # Import the parser
+from custom_csv_parser.csv_parser import CSVParser
 import time
 import os
 
@@ -28,40 +28,72 @@ AVAILABLE_FILES = {
 }
 
 
-# --- Helper Function to apply comparison ---
-def apply_comparison(df, column, op, value):
+# --- Robust Comparison Logic ---
+def get_comparison_mask(df, column, op, value):
     """
-    Applies the correct comparison operator to the DataFrame.
-    This uses the Series's overloaded operators.
+    Generates a boolean mask for filtering, handling mixed types safely.
+    It attempts numeric conversion per row to avoid crashes.
     """
     series = df[column]
+    data = series._data  # Access raw data list
 
-    # Try to convert value to a number for numeric comparisons
-    # try:
-    #     numeric_value = float(value)
-    #     value = numeric_value
-    # except (ValueError, TypeError):
-    #     # Keep as string if it's not a number (e.g., 'Female')
-    #     pass
+    # 1. Determine target value type
+    try:
+        target_val = float(value)
+        is_numeric_target = True
+    except (ValueError, TypeError):
+        target_val = value
+        is_numeric_target = False
 
-    print(f"Applying comparison: {column} {op} {value}")
-    print(f"Series sample data: {series[:5]}")
-    # Citing the Series comparison operators
-    if op == "==":
-        mask = series == value
-    elif op == "!=":
-        mask = series != value
-    elif op == ">":
-        mask = series > value
-    elif op == "<":
-        mask = series < value
-    elif op == ">=":
-        mask = series >= value
-    elif op == "<=":
-        mask = series <= value
-    else:
-        raise ValueError("Invalid operator")
+    mask = []
 
+    # 2. Iterate row by row (safer than bulk conversion)
+    for x in data:
+        row_val = x
+
+        # If target is number, try to treat row value as number
+        if is_numeric_target:
+            try:
+                if x is None or x == "":
+                    row_val = None
+                else:
+                    row_val = float(x)
+            except (ValueError, TypeError):
+                # If conversion fails, treat as None (skip this row for inequality)
+                row_val = None
+
+        # 3. Perform Comparison
+        if row_val is None:
+            # None typically fails inequalities, safe to say False
+            res = False
+        else:
+            try:
+                if op == "==":
+                    res = row_val == target_val
+                elif op == "!=":
+                    res = row_val != target_val
+                elif op == ">":
+                    res = row_val > target_val
+                elif op == "<":
+                    res = row_val < target_val
+                elif op == ">=":
+                    res = row_val >= target_val
+                elif op == "<=":
+                    res = row_val <= target_val
+                else:
+                    res = False
+            except TypeError:
+                # Fallback if types are still incompatible
+                res = False
+
+        mask.append(res)
+
+    return mask
+
+
+def apply_comparison_df(df, column, op, value):
+    """Returns a filtered DataFrame using the robust mask logic."""
+    mask = get_comparison_mask(df, column, op, value)
     return df[mask]
 
 
@@ -72,12 +104,8 @@ selected_df_name = st.selectbox("Choose a dataset:", AVAILABLE_FILES.keys())
 
 
 # --- 2. Load Data On-Demand ---
-# This is the new logic to load only the selected file.
 @st.cache_data(show_spinner=f"Parsing {selected_df_name}...")
 def load_selected_df(file_path):
-    """
-    Parses the selected CSV file using the custom CSVParser.
-    """
     try:
         return CSVParser(filepath=file_path).parse()
     except Exception as e:
@@ -95,14 +123,12 @@ if df is None:
 st.info(
     f"Selected **{selected_df_name}** with shape: {df._shape[0]} rows × {df._shape[1]} columns."
 )
-# Citing head() and to_dict() methods
 st.dataframe(df.to_dict())
 
 
 # --- 3. Select Operation ---
 st.header("Step 2: Choose and Configure an Operation")
 
-# Initialize operations chain in session state
 if "operations_chain" not in st.session_state:
     st.session_state.operations_chain = []
 
@@ -127,7 +153,6 @@ operation = st.selectbox("Select operation to add:", ["Filtering", "Projection"]
 if operation == "Projection":
     st.subheader("Configure Projection")
 
-    # Get current working DataFrame (either original or result from operations)
     if st.session_state.operations_chain:
         working_df = st.session_state.get("operations_result_df", df)
     else:
@@ -137,7 +162,7 @@ if operation == "Projection":
     selected_columns = st.multiselect(
         "Select columns to project:",
         options=all_columns,
-        default=list(all_columns[:3]),  # Default to first 3 columns
+        default=list(all_columns[:3]) if all_columns else None,
     )
 
     if st.button("Add Projection to Chain"):
@@ -152,7 +177,6 @@ if operation == "Projection":
 elif operation == "Filtering":
     st.subheader("Configure Filter(s)")
 
-    # Initialize filters list in session state if not present
     if "filters" not in st.session_state:
         st.session_state.filters = []
     if "filter_logics" not in st.session_state:
@@ -176,7 +200,6 @@ elif operation == "Filtering":
             with col2:
                 if st.button("❌", key=f"remove_filter_{idx}"):
                     st.session_state.filters.pop(idx)
-                    # Remove corresponding logic operator if needed
                     if idx < len(st.session_state.filter_logics):
                         st.session_state.filter_logics.pop(idx)
                     st.rerun()
@@ -197,23 +220,19 @@ elif operation == "Filtering":
             key="new_filter_value",
         )
 
-    # Add Filter button on a new row for proper alignment
     if st.button("Add Filter", use_container_width=True):
         if not new_value:
             st.warning("Please enter a value.")
         else:
             st.session_state.filters.append((new_column, new_operator, new_value))
-            # If there are already filters, add the selected logic operator
             if len(st.session_state.filters) > 1:
                 logic = st.session_state.get("pending_logic", "AND")
                 st.session_state.filter_logics.append(logic)
             st.rerun()
 
-    # Show Run Filters button only if there are filters
     if st.session_state.filters:
         if st.button("Add Filters to Chain", use_container_width=True):
             try:
-                # Build filter description
                 filter_desc = []
                 for idx, (col, op, val) in enumerate(st.session_state.filters):
                     if idx == 0:
@@ -226,7 +245,6 @@ elif operation == "Filtering":
                         )
                         filter_desc.append(f"{logic_op} {col} {op} '{val}'")
 
-                # Add filters to chain
                 st.session_state.operations_chain.append(
                     {
                         "type": "filter",
@@ -236,7 +254,6 @@ elif operation == "Filtering":
                     }
                 )
 
-                # Clear current filters for next operation
                 st.session_state.filters = []
                 st.session_state.filter_logics = []
 
@@ -254,30 +271,12 @@ if st.session_state.operations_chain:
 
                 for op in st.session_state.operations_chain:
                     if op["type"] == "filter":
-                        # Apply filtering
                         masks = []
                         for col, op_type, val in op["filters"]:
-                            filtered_df = apply_comparison(
-                                current_df, col, op_type, val
-                            )
-                            # Create a mask for this filter
-                            mask = [False] * current_df._shape[0]
-                            for i in range(current_df._shape[0]):
-                                row_data = {
-                                    c: current_df._data[c][i]
-                                    for c in current_df._columns
-                                }
-                                for j in range(filtered_df._shape[0]):
-                                    filtered_row = {
-                                        c: filtered_df._data[c][j]
-                                        for c in filtered_df._columns
-                                    }
-                                    if row_data == filtered_row:
-                                        mask[i] = True
-                                        break
+                            # Use robust mask generation directly
+                            mask = get_comparison_mask(current_df, col, op_type, val)
                             masks.append(mask)
 
-                        # Combine masks
                         if len(masks) == 1:
                             combined_mask = masks[0]
                         else:
@@ -301,7 +300,6 @@ if st.session_state.operations_chain:
                         current_df = current_df[combined_mask]
 
                     elif op["type"] == "projection":
-                        # Apply projection
                         current_df = current_df[op["columns"]]
 
                 end_time = time.time()
