@@ -1,13 +1,10 @@
 import streamlit as st
 from custom_csv_parser.csv_parser import CSVParser
-from custom_csv_parser.dataframe import DataFrame
 import os
-import time
 
-# --- 1. Page Configuration ---
 st.set_page_config(page_title="SEA-AD Data Explorer", page_icon="🧠", layout="wide")
 
-# --- 2. File Paths ---
+# ---  Data File Paths ---
 DATA_DIR = "data"
 DONOR_METADATA_FILE = os.path.join(DATA_DIR, "sea-ad_cohort_donor_metadata_072524.csv")
 MRI_FILE = os.path.join(DATA_DIR, "sea-ad_cohort_mri_volumetrics.csv")
@@ -19,7 +16,7 @@ COGNITIVE_FILE = os.path.join(
 )
 
 
-# --- 3. Master Data Loading Function ---
+# --- Master Data Loading Function ---
 # It uses @st.cache_data to run only once
 @st.cache_data
 def load_individual_datasets():
@@ -28,18 +25,13 @@ def load_individual_datasets():
     This demonstrates the PARSE function of the library.
     """
     try:
-        start_time = time.time()
-
-        # 1. PARSE (Using your custom parser from csv_parser.py)
+        # PARSE (Using your custom parser from csv_parser.py)
         donor_df = CSVParser(filepath=DONOR_METADATA_FILE).parse()
         mri_df = CSVParser(filepath=MRI_FILE).parse()
         neuropath_df = CSVParser(filepath=NEUROPATH_FILE).parse()
         cognitive_df = CSVParser(filepath=COGNITIVE_FILE).parse()
 
-        end_time = time.time()
-        load_time = end_time - start_time
-
-        return donor_df, mri_df, neuropath_df, cognitive_df, load_time
+        return donor_df, mri_df, neuropath_df, cognitive_df
 
     except FileNotFoundError as e:
         st.error(
@@ -51,10 +43,11 @@ def load_individual_datasets():
         return None, None, None, None, 0
 
 
-# --- 4. Main App Logic ---
+# --- Main App Logic ---
 st.title("🧠 Welcome to the SEA-AD Data Explorer")
 st.subheader(
-    "A data exploration tool that uses a custom Python library (built from scratch, without pandas) to parse, join, filter, group, and analyze data."
+    "A data exploration tool that uses a custom Python library (built from scratch, without pandas) to parse, join, filter, group, and aggregate [SEA-AD data](https://brain-map.org/consortia/sea-ad/our-data) for analysis. "
+    "This tool also allows uploading custom CSV files to explore your own data."
 )
 
 st.markdown(
@@ -67,16 +60,16 @@ st.markdown(
 """
 )
 
-# --- 5. Load, Explain, and Join Data ---
+# --- Load, Explain, and Join Data ---
 with st.spinner("Loading individual datasets using custom parser..."):
-    donor_df, mri_df, neuropath_df, cognitive_df, load_time = load_individual_datasets()
+    donor_df, mri_df, neuropath_df, cognitive_df = load_individual_datasets()
 
     if donor_df:
-        st.success(f"Successfully parsed all datasets in {load_time:.2f} seconds.")
+        st.success("Successfully parsed all datasets.")
 
         # --- Explain and Show Individual Datasets ---
-        st.header("Data Exploration: Individual Datasets")
-        st.markdown("First 3 rows and the shape of each dataset file:")
+        st.header("Data Exploration: Individual Preset Datasets")
+        st.markdown("First 3 rows and the shape of each preset dataset file:")
 
         st.subheader("1. Donor Metadata")
         st.markdown(
@@ -134,9 +127,5 @@ with st.spinner("Loading individual datasets using custom parser..."):
         st.info(
             f"**Master DataFrame Shape:** {master_df._shape[0]} rows, {master_df._shape[1]} columns"
         )
-
-        # Store the final result in the session state
-        # st.session_state["master_df"] = master_df
-
     else:
         st.error("Failed to load data. The application cannot proceed.")

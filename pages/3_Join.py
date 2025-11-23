@@ -1,5 +1,4 @@
 import streamlit as st
-from custom_csv_parser.dataframe import DataFrame
 from custom_csv_parser.csv_parser import CSVParser
 import os
 
@@ -9,7 +8,7 @@ st.set_page_config(page_title="Join Datasets", page_icon="🔗", layout="wide")
 st.title("🔗 Join Datasets")
 st.markdown(
     """
-This page demonstrates the **Hash Join** algorithm implemented in the custom engine.
+This page lets you interactively test the **Joining** capabilities on the selected datasets.
 You can combine two datasets horizontally based on a common key column.
 """
 )
@@ -65,7 +64,7 @@ def render_file_selector(key_prefix, label):
     return f_path
 
 
-# --- 1. Select Datasets ---
+# --- Select Datasets ---
 st.header("Step 1: Select Datasets")
 
 col1, col2 = st.columns(2)

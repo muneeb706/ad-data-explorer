@@ -1,5 +1,4 @@
 import streamlit as st
-from custom_csv_parser.dataframe import DataFrame
 from custom_csv_parser.csv_parser import CSVParser
 import os
 
@@ -9,7 +8,7 @@ st.set_page_config(page_title="Grouping and Aggregation", page_icon="📊", layo
 st.title("📊 Grouping and Aggregation")
 st.markdown(
     """
-This page demonstrates the **Split-Apply-Combine** strategy. 
+This page lets you interactively test the **Grouping** and **Aggregation** capabilities on the **individual** datasets.. 
 You can group data by a categorical column (Split) and apply summary functions (Apply) to produce a new table (Combine).
 """
 )
@@ -31,7 +30,7 @@ AVAILABLE_FILES = {
     ),
 }
 
-# --- 1. Select Data Source ---
+# --- Select Data Source ---
 st.header("Step 1: Select Dataset")
 
 data_source = st.radio(
@@ -78,26 +77,27 @@ if file_path:
     with st.expander("View Raw Data"):
         st.dataframe(df.head(5).to_dict())
 
-    # --- 2. Configure Grouping ---
+    # --- Configure Grouping ---
     st.header("Step 2: Configure Group By")
 
     if not df._columns:
         st.error("The dataset has no columns.")
         st.stop()
 
-    # 2a. Select Grouping Column
+    # Select Grouping Column
     group_col = st.selectbox(
         "Select column to Group By (The 'Split' step):",
         options=df._columns,
         help="Rows with the same value in this column will be bundled together.",
     )
 
-    # 2b. Configure Aggregations
+    # Configure Aggregations
     st.subheader("Configure Aggregations (The 'Apply' step)")
 
     if "agg_rules" not in st.session_state:
         st.session_state.agg_rules = []
 
+    # Display current aggregation rules and allow adding new ones
     col1, col2, col3 = st.columns([2, 2, 1])
     with col1:
         target_col = st.selectbox("Column to Aggregate:", options=df._columns)
