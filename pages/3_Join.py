@@ -141,9 +141,6 @@ if left_df and right_df:
 
             st.dataframe(joined_df.head(10).to_dict())
 
-            with st.expander("Inspect Joined Columns"):
-                st.write(joined_df._columns)
-
         except Exception as e:
             st.error(f"An error occurred during join: {e}")
 
