@@ -139,10 +139,36 @@ if left_df and right_df:
                 f"**Result:** {joined_df._shape[0]} rows, {joined_df._shape[1]} columns"
             )
 
-            st.dataframe(joined_df.head(10).to_dict())
+            # Store joined dataframe in session state
+            st.session_state["joined_df"] = joined_df
 
         except Exception as e:
             st.error(f"An error occurred during join: {e}")
+
+    # --- 4. Projection on Joined Result ---
+    if "joined_df" in st.session_state:
+        joined_df = st.session_state["joined_df"]
+
+        # Initialize selected columns if not exists (default to all columns)
+        if "selected_columns" not in st.session_state:
+            st.session_state["selected_columns"] = list(joined_df._columns)
+
+        # Column multiselect
+        selected_cols = st.multiselect(
+            "Choose columns to display:",
+            options=joined_df._columns,
+            default=st.session_state["selected_columns"],
+            key="join_column_selector",
+        )
+
+        # Update session state
+        st.session_state["selected_columns"] = selected_cols
+
+        if selected_cols:
+            st.subheader("Joined Data Preview")
+            st.dataframe(joined_df[selected_cols].head(10).to_dict())
+        else:
+            st.info("Please select at least one column to display.")
 
 else:
     st.info("Please select both datasets to proceed.")
