@@ -325,9 +325,7 @@ class DataFrame:
             # Result: DataFrame with columns ['ID', 'Value', 'Name']
         """
 
-        # ============================================================================
-        # STEP 1: INPUT VALIDATION
-        # ============================================================================
+        # INPUT VALIDATION
         # Type checking: ensure right_df is a DataFrame object
         if not isinstance(right_df, DataFrame):
             raise TypeError("right_df must be a DataFrame object")
@@ -349,9 +347,7 @@ class DataFrame:
         if right_on not in right_df._columns:
             raise KeyError(f"Column '{right_on}' not found in right DataFrame.")
 
-        # ============================================================================
-        # STEP 2: BUILD HASH INDEX FOR RIGHT DATAFRAME
-        # ============================================================================
+        # BUILD HASH INDEX FOR RIGHT DATAFRAME
         # Purpose: Enable O(1) lookup of right DataFrame rows by join key value
         # Time Complexity: O(n) where n = number of rows in right DataFrame
         # Space Complexity: O(n)
@@ -380,9 +376,7 @@ class DataFrame:
             # Append the current row index to the list for this key value
             right_index[key_val].append(i)
 
-        # ============================================================================
-        # STEP 3: PREPARE NEW DATAFRAME STRUCTURE
-        # ============================================================================
+        # PREPARE NEW DATAFRAME STRUCTURE
         # Purpose: Set up the schema (columns) and data containers for the result
         # This step handles column name collisions by adding suffixes (_left, _right)
         #
@@ -394,9 +388,7 @@ class DataFrame:
         new_data = {}  # Dictionary: column_name -> list of values
         new_columns = []  # List: maintains column order for result DataFrame
 
-        # --------
         # Add LEFT columns to the result schema
-        # --------
         # Include all columns from the left DataFrame
         # If a column exists in both DataFrames AND it's not a join key, add "_left" suffix
         for col in self._columns:
@@ -411,9 +403,7 @@ class DataFrame:
             new_columns.append(new_col_name)
             new_data[new_col_name] = []  # Initialize empty list for values
 
-        # --------
         # Add RIGHT columns to the result schema
-        # --------
         # Include all columns from the right DataFrame (except join key if it's a duplicate)
         for col in right_df._columns:
             # Skip the join key column ONLY if it has the same name in both DataFrames
@@ -434,9 +424,7 @@ class DataFrame:
                 new_columns.append(new_col_name)
                 new_data[new_col_name] = []
 
-        # ============================================================================
-        # STEP 4: PERFORM THE JOIN (ITERATE AND MATCH)
-        # ============================================================================
+        # PERFORM THE JOIN (ITERATE AND MATCH)
         # Purpose: For each row in left DataFrame, find matching rows in right DataFrame
         #          and append combined data to result
         # Time Complexity: O(n + sum of matches) where n = left DataFrame rows
@@ -452,15 +440,14 @@ class DataFrame:
 
         # Iterate through each row in the left DataFrame
         for left_idx, left_key_val in enumerate(left_key_data):
-            # Step 4a: Look up this key value in the right DataFrame index
+            # Look up this key value in the right DataFrame index
             # If the key value is not found → skip this row (inner join semantics)
             if left_key_val in right_index:
 
-                # Step 4b: Get ALL row indices from right DataFrame that have this key value
-                # (This is the list we built in Step 2)
+                # Get ALL row indices from right DataFrame that have this key value
                 matching_right_indices = right_index[left_key_val]
 
-                # Step 4c: For each matching right row, create ONE result row
+                # For each matching right row, create ONE result row
                 # This loop handles many-to-many joins:
                 #   If one left row matches 3 right rows → creates 3 result rows
                 for right_idx in matching_right_indices:
@@ -501,15 +488,12 @@ class DataFrame:
                             new_col_name = f"{col}_right"
 
                         # Append the value from this right row
-                        # (check that column was initialized in Step 3)
+                        # (check that column was initialized)
                         if new_col_name in new_data:
                             new_data[new_col_name].append(
                                 right_df._data[col][right_idx]
                             )
 
-        # ============================================================================
-        # STEP 5: CREATE AND RETURN RESULT DATAFRAME
-        # ============================================================================
         # Combine all the accumulated data and column definitions into a new DataFrame
         return DataFrame(new_data, new_columns)
 
